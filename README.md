@@ -1,4 +1,11 @@
 # DEM Model Format
+
+<table>
+  <tr>
+    <td>WARNING!! As of this writing, this is all a heavy work in progress and nothing is ready to be used yet.</td>
+  </tr>
+</table>
+
 This generic 3D model format is a flat 2D structure inspired in-part by Wavefront OBJ, but the information found within is inspired by MD5, and supports Skeletal animation.  
 This format is intended to be easily machine parsable without any additional tools, parsers, or libraries. The data within is purposely laid out in such a way to make the most sense when reading in line-by-line.  Special consideration has been placed to also make reading char-by-char inside each line as easy as possible with no weird tricks or special characters. But if you are the type to read in whole lines at once, the format has you covered by making each line single-space delimited.  I want to value your time as a developer, you're a busy person, as are we all. 
 
