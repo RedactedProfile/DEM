@@ -1,7 +1,56 @@
 # Despair Engine Model Exporter
+
+# FORMAT_IDENTIFIER = "DEM"
+# FORMAT_VERSION    = "10"
+
+bl_info = {
+    "name": "Despair Engine Models (dem, dema)",
+    "description": "Importer and exporter for the DEM file format (dem, dema)",
+    "author": "Kyle 'Ninja Ghost'",
+    "version": (1, 0, 0),
+    "blender": (3, 6, 0),
+    "location": "File > Import/Export > Despair Engine Models",
+    "warning": "",  # used for warning icon and text in addons panel
+    "wiki_url": "",
+    "tracker_url": "",
+    "support": 'COMMUNITY',
+    "category": "Import-Export"
+}
+
+
+if "bpy" in locals():
+    import importlib
+    if "import_dem" in locals():
+        importlib.reload(import_dem)
+    if "export_dem" in locals():
+        importlib.reload(export_dem)
+    if "common_dem" in locals():
+        importlib.reload(common_dem)
+    if "datamodels" in locals():
+        importlib.reload(datamodels)
+
 import bpy
+from bpy.props import (
+    BoolProperty,
+    EnumProperty,
+    StringProperty,
+    IntProperty,
+)
+from bpy.types import Operator  # B2.8
+from bpy_extras.io_utils import ExportHelper, ImportHelper
+
 import logging
 from dataclasses import dataclass
+
+from .datamodels import (
+    Vert,
+    Tri,
+    Joint,
+    AnimJoint,
+    Clip,
+    Frame,
+    Weight
+)
 
 logging.basicConfig(level=logging.DEBUG,format='(%(threadName)-10s) %(message)s',)
 
@@ -10,130 +59,6 @@ logging.basicConfig(level=logging.DEBUG,format='(%(threadName)-10s) %(message)s'
 # but the essential data flow follows md5's lead. Such as defining joints, weights and animation data
 # There's some unique concessions of my own, like packing as much vertex data into one line as possible in the exact
 # same format as I like to describe my vertex buffers, and only supporting triangles. 
-
-MAX_FLOAT_PRECISION = 16
-
-@dataclass
-class Vert:
-    i: int      = 0
-    vx: float   = 0.0
-    vy: float   = 0.0
-    vz: float   = 0.0
-    nx: float   = 0.0
-    ny: float   = 0.0
-    nz: float   = 0.0
-    u: float    = 0.0
-    v: float    = 0.0
-    r: float    = 0.0
-    g: float    = 0.0
-    b: float    = 0.0
-    
-    def __str__(self):
-        return "v {} {} {} {} {} {} {} {} {} {} {} {}\n".format(
-            self.i, 
-            round(self.vx, MAX_FLOAT_PRECISION),
-            round(self.vy, MAX_FLOAT_PRECISION),
-            round(self.vz, MAX_FLOAT_PRECISION),
-            round(self.nx, MAX_FLOAT_PRECISION),
-            round(self.ny, MAX_FLOAT_PRECISION),
-            round(self.nz, MAX_FLOAT_PRECISION),
-            round(self.u, MAX_FLOAT_PRECISION),
-            round(self.v, MAX_FLOAT_PRECISION),
-            round(self.r, MAX_FLOAT_PRECISION),
-            round(self.g, MAX_FLOAT_PRECISION),
-            round(self.b, MAX_FLOAT_PRECISION)
-        )
-    
-@dataclass
-class Joint:
-    name: str
-    parent: int = -1
-    vx: float   = 0.0
-    vy: float   = 0.0
-    vz: float   = 0.0 
-    rx: float   = 0.0
-    ry: float   = 0.0
-    rz: float   = 0.0
-
-    def __str__(self):
-        return "j {} {} {} {} {} {} {} {}\n".format(
-            self.name,
-            self.parent,
-            round(self.vx, MAX_FLOAT_PRECISION),
-            round(self.vy, MAX_FLOAT_PRECISION),
-            round(self.vz, MAX_FLOAT_PRECISION),
-            round(self.rx, MAX_FLOAT_PRECISION),
-            round(self.ry, MAX_FLOAT_PRECISION),
-            round(self.rz, MAX_FLOAT_PRECISION) 
-        )
-
-@dataclass 
-class Tri:
-    i: int
-    v1: int = 0
-    v2: int = 0
-    v3: int = 0
-
-    def __str__(self):
-        return "t {} {} {} {}\n".format(
-            self.i,
-            self.v1,
-            self.v2,
-            self.v3 
-        )
-    
-@dataclass 
-class Weight:
-    i: int 
-    j: int 
-    w: float 
-    x: float 
-    y: float 
-    z: float 
-
-    def __str__(self):
-        return "w {} {} {} {} {} {}\n".format(
-            self.i,
-            self.j,
-            round(self.w, MAX_FLOAT_PRECISION),
-            round(self.x, MAX_FLOAT_PRECISION),
-            round(self.y, MAX_FLOAT_PRECISION),
-            round(self.z, MAX_FLOAT_PRECISION) 
-        )
-
-
-
-#### ANIM FORMAT
-@dataclass 
-class AnimJoint:
-    joint: Joint   # to reference name and parent index 
-    flags: int 
-    start_index: int  # not sure if I need this for my purposes
-
-    def __str__(self):
-        return "h "
-
-@dataclass
-class Frame:
-    i: int 
-    tx: float 
-    ty: float 
-    tz: float 
-    rx: float 
-    ry: float 
-    rz: float 
-
-    def __str__(self):
-        return "f "
-    
-@dataclass
-class Clip:
-    joints: [Joint]
-    frameRate: int 
-
-
-
-
 
 def write_some_data(context, filepath, use_some_setting):
     print("running writer...")
@@ -147,7 +72,7 @@ def write_some_data(context, filepath, use_some_setting):
             # Configure the modifier if needed
     
 
-    f.write("DEM_10\n")
+    f.write("{}_{}\n".format("DEM", "10"))
     
     scene = bpy.context.scene 
     
@@ -332,4 +257,4 @@ if __name__ == "__main__":
     register()
 
     # test call
-    bpy.ops.export_test.some_data('INVOKE_DEFAULT')
+    # bpy.ops.export_test.some_data('INVOKE_DEFAULT')
