@@ -72,21 +72,35 @@ def triangulateMesh_fn(object, depsgraph, tri=False):
     print("Doing the triangulation thing")
 
     depMesh = object.evaluated_get(depsgraph)  # .original.to_mesh()
+    print(f" = depMesh {str(depMesh)}")
     outMesh = depMesh.to_mesh()  # .original.to_mesh()
+    print(f" = outMesh {str(outMesh)}")
     outMesh.transform(object.matrix_world)  # added 1.21
+    print(f" = outMesh {str(outMesh)}")
     #  outMesh = object.data  # .original.to_mesh() # working old 2.8.0
     #  ###tmp_mesh.to_mesh_clear()disable if not used
 
     if outMesh is None or not object.type == 'MESH':
+        print("to_mesh_clear()")
         depMesh.to_mesh_clear()
         return None, None
 
     if not outMesh.loop_triangles and outMesh.polygons:
+        print("calc_loop_triangles()")
         outMesh.calc_loop_triangles()
 
     print("I guess we did the triangulation thing")
 
     return outMesh, depMesh
+
+def mesh_triangulate(me):
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bmesh.ops.triangulate(bm, faces=bm.faces)
+    bm.to_mesh(me)
+    bm.free()
+
 
 
 def write_some_data(context, filepath, use_some_setting):
@@ -142,20 +156,23 @@ def write_some_data(context, filepath, use_some_setting):
             f.write("mesh %s\n" % obj.name)
     
             ### We only support triangles, so we force the issue 
-            tmp_mesh, depMesh = triangulateMesh_fn(obj, depsgraph)
-            if tmp_mesh is None:
-                continue
+            # tmp_mesh, depMesh = triangulateMesh_fn(obj, depsgraph)
+            # tmp_mesh = mesh_triangulate(obj.original.to_mesh())
+            # if tmp_mesh is None:
+                # continue
+
 
             mesh = obj.data
-            mesh_loops = mesh.loops
-            uv_layer = mesh.uv_layers.active.data
+            tmp_mesh = mesh 
+            mesh_loops = tmp_mesh.loops
+            uv_layer = tmp_mesh.uv_layers.active.data
 
-            if not mesh.vertex_colors:
-                mesh.vertex_colors.new()
+            if not tmp_mesh.vertex_colors:
+                tmp_mesh.vertex_colors.new()
                 logging.debug("Mesh had no vertex colors, adding them")
                 print(f"Mesh had no vertex colors, adding them")
 
-            color_layer = mesh.vertex_colors.active.data    # this was tripping errors
+            color_layer = tmp_mesh.vertex_colors.active.data    # this was tripping errors
 
             if bpy.context.mode == 'EDIT_MESH':
                 bpy.ops.object.mode_set(mode='OBJECT')
@@ -163,7 +180,7 @@ def write_some_data(context, filepath, use_some_setting):
             f.write("mat lightmapped_generic\n")
 
             # Gather Vertices
-            f.write("verts {}\n".format(len(mesh.vertices)))
+            f.write("verts {}\n".format(len(tmp_mesh.vertices)))
             vert_array = []
             for vertex in tmp_mesh.vertices:
                 vert_array.append(Vert(
@@ -179,7 +196,7 @@ def write_some_data(context, filepath, use_some_setting):
             for poly in tmp_mesh.polygons:
                 # print(f"  Face {poly.index}:")
                 for li in poly.loop_indices:
-                    loop = mesh.loops[li]
+                    loop = tmp_mesh.loops[li]
                     loop_idx = loop.vertex_index
                     uv = uv_layer[li].uv
                     color = color_layer[li].color
@@ -199,23 +216,36 @@ def write_some_data(context, filepath, use_some_setting):
             # Gather Faces
             face_array = []
             for poly in tmp_mesh.polygons:
-                print(f"  Face {poly.index}:")
+                print(f"  Face {str(poly)}:")
 
                 t = Tri(
                     poly.index
                 )
+                triCounter = 0
                 for li in poly.loop_indices:
-                    if li <= 2:
-                        loop = mesh.loops[li]
-                        loop_idx = loop.vertex_index
+                    print(f"    - li: {li}")
+                    # if li <= 2:
+                    loop = mesh.loops[li]
+                    print(f"    - loop: {loop}")
+                    loop_idx = loop.vertex_index
 #                        setattr(t, f'v{li+1}', loop_idx)
-                        if li == 0:
-                            t.v1 = loop_idx
-                        elif li == 1:
-                            t.v2 = loop_idx
-                        elif li == 2:
-                            t.v3 = loop_idx
-                face_array.append(t)
+                    if triCounter == 0:
+                        t.v1 = loop_idx
+                    elif triCounter == 1:
+                        t.v2 = loop_idx
+                    elif triCounter == 2:
+                        t.v3 = loop_idx
+                        face_array.append(t)
+                        t = Tri(
+                            poly.index
+                        )
+
+                    triCounter += 1
+                    if triCounter > 2:
+                        triCounter = 0
+
+
+                
 
             f.write("tris {}\n".format(len(face_array)))
             for face in face_array:
