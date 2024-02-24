@@ -1,7 +1,46 @@
 # Despair Engine Model Exporter
+import bpy
+from bpy.props import (
+    BoolProperty,
+    EnumProperty,
+    StringProperty,
+    IntProperty,
+)
+from bpy.types import Operator  # B2.8
+from bpy_extras.io_utils import ExportHelper, ImportHelper
 
-# FORMAT_IDENTIFIER = "DEM"
-# FORMAT_VERSION    = "10"
+# ExportHelper is a helper class, defines filename and
+# invoke() function which calls the file selector.
+from bpy.props import StringProperty, BoolProperty, EnumProperty
+from bpy.types import Operator
+
+import logging
+
+if "bpy" in locals():
+    import importlib
+    if "import_dem" in locals():
+        importlib.reload(import_dem)
+    if "export_dem" in locals():
+        importlib.reload(export_dem)
+    if "common_dem" in locals():
+        importlib.reload(common_dem)
+    if "datamodels" in locals():
+        importlib.reload(datamodels)
+else:
+    import common_dem
+    import dataclasses
+    import import_dem
+    import export_dem
+
+from .datamodels import (
+    Vert,
+    Tri,
+    Joint,
+    AnimJoint,
+    Clip,
+    Frame,
+    Weight
+)
 
 bl_info = {
     "name": "Despair Engine Models (dem, dema)",
@@ -17,42 +56,7 @@ bl_info = {
     "category": "Import-Export"
 }
 
-
-if "bpy" in locals():
-    import importlib
-    if "import_dem" in locals():
-        importlib.reload(import_dem)
-    if "export_dem" in locals():
-        importlib.reload(export_dem)
-    if "common_dem" in locals():
-        importlib.reload(common_dem)
-    if "datamodels" in locals():
-        importlib.reload(datamodels)
-
-import bpy
-from bpy.props import (
-    BoolProperty,
-    EnumProperty,
-    StringProperty,
-    IntProperty,
-)
-from bpy.types import Operator  # B2.8
-from bpy_extras.io_utils import ExportHelper, ImportHelper
-
-import logging
-from dataclasses import dataclass
-
-from .datamodels import (
-    Vert,
-    Tri,
-    Joint,
-    AnimJoint,
-    Clip,
-    Frame,
-    Weight
-)
-
-logging.basicConfig(level=logging.DEBUG,format='(%(threadName)-10s) %(message)s',)
+logging.basicConfig(level=logging.DEBUG, format='(%(threadName)-10s) %(message)s',)
 
 # The model format essentially apes off of a weird marriage between obj and md5
 # in that the overall text file format is obj-like in style, purposely stupidly easy to parse 
@@ -60,99 +64,143 @@ logging.basicConfig(level=logging.DEBUG,format='(%(threadName)-10s) %(message)s'
 # There's some unique concessions of my own, like packing as much vertex data into one line as possible in the exact
 # same format as I like to describe my vertex buffers, and only supporting triangles. 
 
+def triangulateMesh_fn(object, depsgraph, tri=False):
+    ''' only triangulate selected mesh '''
+    if not object.type == 'MESH':
+        return None, None
+    
+    print("Doing the triangulation thing")
+
+    depMesh = object.evaluated_get(depsgraph)  # .original.to_mesh()
+    outMesh = depMesh.to_mesh()  # .original.to_mesh()
+    outMesh.transform(object.matrix_world)  # added 1.21
+    #  outMesh = object.data  # .original.to_mesh() # working old 2.8.0
+    #  ###tmp_mesh.to_mesh_clear()disable if not used
+
+    if outMesh is None or not object.type == 'MESH':
+        depMesh.to_mesh_clear()
+        return None, None
+
+    if not outMesh.loop_triangles and outMesh.polygons:
+        outMesh.calc_loop_triangles()
+
+    print("I guess we did the triangulation thing")
+
+    return outMesh, depMesh
+
+
 def write_some_data(context, filepath, use_some_setting):
     print("running writer...")
     f = open(filepath, 'w', encoding='utf-8')
-    
-    
-    # Apply a Triangulate Modifier to all mesh objects
-    for obj in bpy.context.scene.objects:
-        if obj.type == 'MESH':
-            mod = obj.modifiers.new(name="Triangulate", type='TRIANGULATE')
-            # Configure the modifier if needed
-    
+
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+
+
+    # # Apply a Triangulate Modifier to all mesh objects
+    # for obj in bpy.context.scene.objects:
+    #     if obj.type == 'MESH':
+    #         mod = obj.modifiers.new(name="Triangulate", type='TRIANGULATE')
+    #         # Configure the modifier if needed
 
     f.write("{}_{}\n".format("DEM", "10"))
-    
-    scene = bpy.context.scene 
-    
-    numMeshes = 0
-    numJoints = 0
-    for obj in scene.objects: 
+
+    # scene = bpy.context.scene
+    scene = depsgraph.object_instances
+
+    """
+    Phase 1: Header.
+    """
+
+    num_meshes = 0
+    num_joints = 0
+    for obj_instance in scene:
+        obj = obj_instance.object 
         if obj.type == 'MESH':
-            numMeshes+=1
+            num_meshes+=1
         elif obj.type == 'JOINT':
-            numJoints+=1
-    
-    
-    f.write("joints {}\n".format(numJoints))
-    for obj in scene.objects:
-        if obj.type == 'JOINT':
-            print("Discovered joint")
-            # j jointName parentIndex vx vy vz rx ry rz 
-    
-    
-    f.write("meshes {}\n".format(numMeshes))
-    for obj in scene.objects:
+            num_joints+=1
+
+    f.write("joints {}\n".format(num_joints))
+    # for obj in scene.objects:
+    #     if obj.type == 'JOINT':
+    #         print("Discovered joint")
+    #         # j jointName parentIndex vx vy vz rx ry rz 
+
+    f.write("meshes {}\n".format(num_meshes))
+
+
+    """
+    Phase 2: Models and Meshes
+    """
+
+    for obj_instance in scene:
+        obj = obj_instance.object
+
+
         if obj.type == 'MESH':
             print("Discovered object %s" % obj.name)
             f.write("mesh %s\n" % obj.name)
+    
+            ### We only support triangles, so we force the issue 
+            tmp_mesh, depMesh = triangulateMesh_fn(obj, depsgraph)
+            if tmp_mesh is None:
+                continue
 
-            mesh = obj.data 
+            mesh = obj.data
+            mesh_loops = mesh.loops
             uv_layer = mesh.uv_layers.active.data
-            
+
             if not mesh.vertex_colors:
                 mesh.vertex_colors.new()
-                #logging.debug("Mesh had no vertex colors, adding them")
+                logging.debug("Mesh had no vertex colors, adding them")
                 print(f"Mesh had no vertex colors, adding them")
-            
+
             color_layer = mesh.vertex_colors.active.data    # this was tripping errors
-            
+
             if bpy.context.mode == 'EDIT_MESH':
                 bpy.ops.object.mode_set(mode='OBJECT')
-                
+
             f.write("mat lightmapped_generic\n")
-            
-            ### Gather Vertices
+
+            # Gather Vertices
             f.write("verts {}\n".format(len(mesh.vertices)))
-            VertArray = []
-            for vertex in mesh.vertices:
-                VertArray.append(Vert(
-                    vertex.index, 
-                    vertex.co.x, 
-                    vertex.co.y, 
-                    vertex.co.z, 
-                    vertex.normal.x, 
-                    vertex.normal.y, 
+            vert_array = []
+            for vertex in tmp_mesh.vertices:
+                vert_array.append(Vert(
+                    vertex.index,
+                    vertex.co.x,
+                    vertex.co.y,
+                    vertex.co.z,
+                    vertex.normal.x,
+                    vertex.normal.y,
                     vertex.normal.z
                 ))
-            
-            
-            for poly in mesh.polygons:
-                #print(f"  Face {poly.index}:")
+
+            for poly in tmp_mesh.polygons:
+                # print(f"  Face {poly.index}:")
                 for li in poly.loop_indices:
                     loop = mesh.loops[li]
                     loop_idx = loop.vertex_index
                     uv = uv_layer[li].uv
                     color = color_layer[li].color
-#                    print(f"    Loop {li}: Vertex {loop_idx} UV = {uv}")
-                    VertArray[loop_idx].u = uv.x
-                    VertArray[loop_idx].v = uv.y
-                    VertArray[loop_idx].r = color[0]
-                    VertArray[loop_idx].g = color[1]
-                    VertArray[loop_idx].b = color[2]
-                    #print(f"    Loop {li}: Vertex {loop_idx} UV = {uv} Color = (R: {color[0]}, G: {color[1]}, B: {color[2]})")
+                    # print(f"    Loop {li}: Vertex {loop_idx} UV = {uv}")
+                    vert_array[loop_idx].u = uv.x
+                    vert_array[loop_idx].v = uv.y
+                    vert_array[loop_idx].r = color[0]
+                    vert_array[loop_idx].g = color[1]
+                    vert_array[loop_idx].b = color[2]
+                    # print(f"    Loop {li}: Vertex {loop_idx} UV = {uv}
+                    # Color = (R: {color[0]}, G: {color[1]}, B: {color[2]})")
 
-            for vertex in VertArray:
+            for vertex in vert_array:
                 # v idx vx vy vz nx ny nz tu tv cr cg cb
                 f.write(str(vertex))
-                
-                
-            ### Gather Faces
-            FaceArray = []
-            for poly in mesh.polygons:
+
+            # Gather Faces
+            face_array = []
+            for poly in tmp_mesh.polygons:
                 print(f"  Face {poly.index}:")
-                
+
                 t = Tri(
                     poly.index
                 )
@@ -167,23 +215,21 @@ def write_some_data(context, filepath, use_some_setting):
                             t.v2 = loop_idx
                         elif li == 2:
                             t.v3 = loop_idx
-                FaceArray.append(t)
-                    
-            f.write("tris {}\n".format(len(FaceArray)))
-            # t idx vidx vidx vidx
-            for face in FaceArray:
+                face_array.append(t)
+
+            f.write("tris {}\n".format(len(face_array)))
+            for face in face_array:
                 f.write(str(face))
-                    
-            
-            ### Gather Weights
-            WeightArray = []
+
+            # Gather Weights
+            weight_array = []
             f.write("weights {}\n".format(0))
             # w idx jidx weight x y z
-    
-    
+
+
 #    f.write("Hello World %s" % use_some_setting)
     f.close()
-    
+
     # Remove the Triangulate Modifier after export
     for obj in bpy.context.scene.objects:
         if obj.type == 'MESH':
@@ -192,14 +238,6 @@ def write_some_data(context, filepath, use_some_setting):
                     obj.modifiers.remove(mod)
 
     return {'FINISHED'}
-
-
-# ExportHelper is a helper class, defines filename and
-# invoke() function which calls the file selector.
-from bpy_extras.io_utils import ExportHelper
-from bpy.props import StringProperty, BoolProperty, EnumProperty
-from bpy.types import Operator
-
 
 class ExportSomeData(Operator, ExportHelper):
     """This appears in the tooltip of the operator and in the generated docs"""
@@ -224,13 +262,16 @@ class ExportSomeData(Operator, ExportHelper):
     )
 
     type: EnumProperty(
-        name="Example Enum",
-        description="Choose between two items",
+        name="Format",
+        description="Export Mode",
         items=(
-            ('OPT_A', "First Option", "Description one"),
-            ('OPT_B', "Second Option", "Description two"),
+            ('DEM_ALL', "DEM (Packed)", "(Default) Everything in one .dem file"),
+            ('DEM_DEMA', "DEM & DEMA", "Model and Animation files split"),
+            ('DEM_ONLY', "DEM (Model)", "Just Model data, no animation"),
+            ('DEMA_ONE', "DEMA (Single)", "Just Animation, no Model, don't split by Marker"),
+            ('DEMA_MULT', "DEMA (Multiple)", "Just Animation, no Model, split by Marker"),
         ),
-        default='OPT_A',
+        default='DEM_ALL',
     )
 
     def execute(self, context):
