@@ -116,7 +116,7 @@ def write_some_data(context, filepath, use_some_setting):
     #         mod = obj.modifiers.new(name="Triangulate", type='TRIANGULATE')
     #         # Configure the modifier if needed
 
-    f.write("{}_{}\n".format("DEM", "10"))
+    f.write("{} {}\n".format("DEM", "10"))
 
     # scene = bpy.context.scene
     scene = depsgraph.object_instances
