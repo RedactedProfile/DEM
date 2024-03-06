@@ -79,7 +79,8 @@ Defines a single frame's singlular joint animated components. There will be an "
 
 ## Static Model: Blender Cube
 ```
-DEM_10
+DEM 10
+model box
 meshes 1
 mesh Cube
 mat cube
